@@ -1,0 +1,10 @@
+{
+  "cases": {
+    "optimize:sample_5x5.png->optimized.webp:q80:strip": { "width": 5, "height": 5, "size_bytes": 70 },
+    "optimize:sample_5x5.png->optimized.gif:q80": { "width": 5, "height": 5, "size_bytes": 64 },
+    "crop:sample_5x5.png->crop_2x2.png:1:1:2:2": { "width": 2, "height": 2, "size_bytes": 285 },
+    "optimize:sample_5x5.png->optimized.tiff:q75:strip": { "width": 5, "height": 5, "size_bytes": 250 },
+    "optimize:sample_5x5.png->optimized.jpg:q85:strip": { "width": 5, "height": 5, "size_bytes": 616 },
+    "optimize:sample_5x5.png->optimized.png:q80:strip": { "width": 5, "height": 5, "size_bytes": 94 }
+  }
+}

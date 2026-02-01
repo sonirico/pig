@@ -1,0 +1,37 @@
+# =============================================================================
+# CI: test and build on push/PR (no release)
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: "0.15.2"
+
+      - name: Install libvips (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvips-dev pkg-config
+
+      - name: Unit tests
+        run: zig build test
+
+      - name: Build
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Integration tests
+        run: zig build integration-test

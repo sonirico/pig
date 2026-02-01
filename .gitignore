@@ -1,0 +1,290 @@
+# Zig build artifacts
+zig-cache/
+docs/
+zig-out/
+.zig-cache/
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+
+# Zig specific
+*.zon.lock
+compile_commands.json
+
+# Build directories
+build/
+dist/
+target/
+bin/
+
+# ===============================
+# SYSTEM & EDITOR
+# ===============================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===============================
+# EDITORS & IDEs
+# ===============================
+
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Vim
+*.swp
+*.swo
+*~
+tags
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+# ===============================
+# DEVELOPMENT & RUNTIME
+# ===============================
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# Dependency directories
+node_modules/
+vendor/
+deps/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.envrc
+
+# ===============================
+# IMAGE/VIDEO PROCESSING SPECIFIC
+# ===============================
+
+# Test media files
+test_images/
+test_videos/
+samples/
+fixtures/
+# Keep integration test fixtures (small, deterministic)
+!tests/fixtures/
+!tests/fixtures/*
+# Integration test output
+tests/out/
+*.test.jpg
+*.test.png
+*.test.webp
+*.test.avif
+*.test.mp4
+*.test.mkv
+
+# Temporary processing files
+tmp/
+temp/
+*.tmp
+*.temp
+processing_*
+thumbnail_*
+resized_*
+optimized_*
+
+# libvips cache
+.vips/
+vips-cache/
+
+# FFmpeg temp
+ffmpeg_temp/
+*.ffmpeg.log
+
+# Image metadata
+*.exif
+*.xmp
+
+# ===============================
+# DOCKER & CONTAINERS
+# ===============================
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+.docker/
+
+# Container runtime
+.container-*
+
+# ===============================
+# CLOUD & DEPLOYMENT
+# ===============================
+
+# AWS
+.aws/
+*.pem
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Kubernetes
+*.kubeconfig
+
+# ===============================
+# BENCHMARKS & PROFILING
+# ===============================
+
+# Benchmark results
+bench_results/
+*.bench
+*.prof
+*.pprof
+perf.data*
+callgrind.out.*
+
+# Performance monitoring
+flamegraph.svg
+*.flamegraph
+
+# ===============================
+# DOCUMENTATION
+# ===============================
+
+# Generated docs
+docs/build/
+site/
+_site/
+
+# LaTeX
+*.aux
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# ===============================
+# SECURITY & SECRETS
+# ===============================
+
+# API keys and secrets
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+.secrets
+api_keys.txt
+
+# GPG
+secring.*
+
+# ===============================
+# MISC
+# ===============================
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Cores
+core.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Project specific exclusions
+# Add your custom patterns here
+
+.github/copilot-instructions.md
+.test/
+src/savers/

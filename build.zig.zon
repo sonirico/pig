@@ -1,0 +1,19 @@
+.{
+    .fingerprint = 0xcc59955778e293bd,
+    .name = .pig,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .zli = .{
+            .url = "https://github.com/xcaeser/zli/archive/v4.1.1.tar.gz",
+            .hash = "zli-4.1.1-LeUjpljfAAAak_E3L4NPowuzPs_FUF9-jYyxuTSNSthM",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "bench",
+        "README.md",
+    },
+}
