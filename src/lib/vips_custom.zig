@@ -513,6 +513,16 @@ pub fn cropImagePipelineWithOpts(allocator: std.mem.Allocator, reader: *std.Io.R
     var image = imageFromSource(source.getVipsSource()) catch return vips.VipsError.LoadFailed;
     defer image.deinit();
 
+    // Validate crop bounds against actual image dimensions
+    const img_w = image.getWidth();
+    const img_h = image.getHeight();
+    const x_u: u32 = if (x >= 0) @intCast(x) else 0;
+    const y_u: u32 = if (y >= 0) @intCast(y) else 0;
+    if (x < 0 or y < 0 or x_u + width > img_w or y_u + height > img_h) {
+        vips.c.vips_error("crop", "area x=%d,y=%d,w=%u,h=%u exceeds image bounds %ux%u", x, y, width, height, img_w, img_h);
+        return vips.VipsError.CropOutOfBounds;
+    }
+
     var cropped_image = vips.cropImage(&image, x, y, width, height) catch return vips.VipsError.ProcessingFailed;
     defer cropped_image.deinit();
 
@@ -907,6 +917,41 @@ test "cropImagePipelineWithOpts: crop and verify dimensions" {
     defer cropped.deinit();
     try std.testing.expectEqual(@as(u32, 32), cropped.getWidth());
     try std.testing.expectEqual(@as(u32, 32), cropped.getHeight());
+}
+
+test "cropImagePipelineWithOpts: out-of-bounds returns CropOutOfBounds" {
+    if (!ensureVipsInit()) return error.SkipZigTest;
+
+    var img = createTestImage(64, 64) orelse return error.SkipZigTest;
+    defer img.deinit();
+
+    var png_buf: [256 * 1024]u8 = undefined;
+    const png_data = saveTestImageToBuffer(&img, &png_buf, .{ .png = .{} }) orelse return error.SkipZigTest;
+
+    // x+width (50+32=82) exceeds image width (64)
+    {
+        var reader = std.Io.Reader.fixed(png_data);
+        var output_buf: [256 * 1024]u8 = undefined;
+        var writer = std.Io.Writer.fixed(&output_buf);
+        const result = cropImagePipelineWithOpts(std.testing.allocator, &reader, &writer, 50, 0, 32, 32, .{ .png = .{} });
+        try std.testing.expectError(vips.VipsError.CropOutOfBounds, result);
+    }
+    // y+height (50+32=82) exceeds image height (64)
+    {
+        var reader = std.Io.Reader.fixed(png_data);
+        var output_buf: [256 * 1024]u8 = undefined;
+        var writer = std.Io.Writer.fixed(&output_buf);
+        const result = cropImagePipelineWithOpts(std.testing.allocator, &reader, &writer, 0, 50, 32, 32, .{ .png = .{} });
+        try std.testing.expectError(vips.VipsError.CropOutOfBounds, result);
+    }
+    // negative x
+    {
+        var reader = std.Io.Reader.fixed(png_data);
+        var output_buf: [256 * 1024]u8 = undefined;
+        var writer = std.Io.Writer.fixed(&output_buf);
+        const result = cropImagePipelineWithOpts(std.testing.allocator, &reader, &writer, -1, 0, 32, 32, .{ .png = .{} });
+        try std.testing.expectError(vips.VipsError.CropOutOfBounds, result);
+    }
 }
 
 test "scaleImagePipelineWithOpts: scale and verify dimensions" {

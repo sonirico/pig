@@ -17,6 +17,7 @@ pub const VipsError = error{
     ProcessingFailed,
     InvalidFormat,
     OutOfMemory,
+    CropOutOfBounds,
 };
 
 pub const ImageFormat = enum {
