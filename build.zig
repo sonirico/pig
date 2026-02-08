@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // --- Lib: shared module for CLI and future HTTP server ---
+    // --- Lib: shared module for CLI and external consumers ---
     const pig_lib = b.addModule("pig", .{
         .root_source_file = b.path("src/lib/lib.zig"),
         .target = target,
@@ -126,6 +126,37 @@ pub fn build(b: *std.Build) void {
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+
+    // Lib tests (tests inside the pig library: vips_custom, format_options, etc.)
+    const lib_tests = b.addTest(.{
+        .root_module = b.addModule("lib-test", .{
+            .root_source_file = b.path("src/lib/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    lib_tests.root_module.addCMacro("_GNU_SOURCE", "1");
+    lib_tests.root_module.addCMacro("_DEFAULT_SOURCE", "1");
+    lib_tests.root_module.addCMacro("_POSIX_C_SOURCE", "200809L");
+    lib_tests.root_module.addCMacro("_FILE_OFFSET_BITS", "64");
+    lib_tests.linkSystemLibrary("vips");
+    lib_tests.linkSystemLibrary("glib-2.0");
+    lib_tests.linkSystemLibrary("gobject-2.0");
+    lib_tests.linkSystemLibrary("gio-2.0");
+    lib_tests.linkSystemLibrary("gmodule-2.0");
+    lib_tests.linkLibC();
+    addPathIfExists(lib_tests, "/usr/local/include", true);
+    addPathIfExists(lib_tests, "/usr/include", true);
+    addPathIfExists(lib_tests, "/usr/include/vips", true);
+    addPathIfExists(lib_tests, "/usr/include/glib-2.0", true);
+    addPathIfExists(lib_tests, "/usr/lib64/glib-2.0/include", true);
+    addPathIfExists(lib_tests, "/usr/lib/x86_64-linux-gnu/glib-2.0/include", true);
+
+    const run_lib_tests = b.addRunArtifact(lib_tests);
+    const lib_test_step = b.step("lib-test", "Run library tests (vips_custom, format_options)");
+    lib_test_step.dependOn(&run_lib_tests.step);
+    // Also include lib tests in the main test step
+    test_step.dependOn(&run_lib_tests.step);
 
     // Integration tests: snapshot-based runner in Zig (no bash)
     const integration_exe = b.addExecutable(.{

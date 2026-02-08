@@ -8,3 +8,9 @@ pub const utils = @import("utils.zig");
 pub const format_options = @import("format_options.zig");
 /// Logger (used by utils and by CLI/server entrypoints).
 pub const logger = @import("logger.zig");
+
+// Force test discovery in imported files.
+test {
+    _ = @import("vips_custom.zig");
+    _ = @import("format_options.zig");
+}

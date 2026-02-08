@@ -14,12 +14,11 @@ env:
   ZIG_VERSION: '0.15.2'
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Linux: 100% static binary via Docker (no runtime deps)
-  # ---------------------------------------------------------------------------
   build-linux:
     name: Build Linux (static)
     runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,18 +38,15 @@ jobs:
           name: pig-linux-x86_64
           path: pig-linux-x86_64
 
-  # ---------------------------------------------------------------------------
-  # macOS: dynamic build (libvips from Homebrew)
-  # ---------------------------------------------------------------------------
   build-macos:
     name: Build macOS ${{ matrix.artifact }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          - os: macos-13   # Intel
+          - os: macos-15-intel   # Intel (macos-13 retired Dec 2025)
             artifact: pig-darwin-x86_64
-          - os: macos-14   # Apple Silicon
+          - os: macos-14        # Apple Silicon
             artifact: pig-darwin-arm64
     steps:
       - name: Checkout

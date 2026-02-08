@@ -1,6 +1,7 @@
 # =============================================================================
 # pig – 100% static CLI binary. All deps built from source into /opt/static.
 # Use: make docker-build && make docker-extract  (binary in ./out/pig)
+# Optimized: .dockerignore + COPY order + BuildKit cache so only changed layers rebuild.
 # =============================================================================
 # syntax=docker/dockerfile:1
 FROM alpine:3.22 AS base
@@ -101,7 +102,10 @@ WORKDIR /app
 COPY build.zig build.zig.zon ./
 COPY src/ ./src/
 
-RUN zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic=true
+# BuildKit cache: zig global + project cache so unchanged files don't recompile
+RUN --mount=type=cache,target=/root/.cache/zig \
+    --mount=type=cache,target=/app/.zig-cache \
+    zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic=true
 
 # =============================================================================
 # Artifact: only the binary (docker build --output type=local,dest=./out)

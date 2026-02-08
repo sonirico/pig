@@ -1,5 +1,6 @@
 const std = @import("std");
 const vips = @import("vips.zig");
+const format_options = @import("format_options.zig");
 
 // Context structures for custom source/target callbacks
 const SourceContext = struct {
@@ -15,39 +16,26 @@ const TargetContext = struct {
     allocator: std.mem.Allocator,
 };
 
-// Callback function for reading from custom source
-fn sourceReadCallback(source: [*c]vips.c.VipsSourceCustom, buffer: ?*anyopaque, length: i64) callconv(.c) i64 {
-    if (buffer == null or length <= 0 or source == null) return -1;
-
-    // Get context from source user data
-    const ctx_ptr = vips.c.g_object_get_data(@ptrCast(source), "zig_context");
-    if (ctx_ptr == null) return -1;
-
-    const ctx = @as(*SourceContext, @ptrCast(@alignCast(ctx_ptr)));
+// Signal callback for VipsSourceCustom "read" — receives user_data as last param.
+fn sourceReadCallback(_: [*c]vips.c.VipsSourceCustom, buffer: ?*anyopaque, length: i64, user_data: ?*anyopaque) callconv(.c) i64 {
+    if (buffer == null or length <= 0) return -1;
+    const ctx = @as(*SourceContext, @ptrCast(@alignCast(user_data orelse return -1)));
 
     if (ctx.eof_reached) return 0;
 
-    // Read from the reader into our buffer
     const read_buffer = @as([*]u8, @ptrCast(buffer.?))[0..@intCast(length)];
-    const bytes_read = ctx.reader.readAll(read_buffer) catch return -1;
-
+    const bytes_read = std.Io.Reader.readSliceShort(ctx.reader, read_buffer) catch return -1;
     if (bytes_read == 0) {
         ctx.eof_reached = true;
         return 0;
     }
-
     return @intCast(bytes_read);
 }
 
-// Callback function for writing to custom target
-fn targetWriteCallback(target: [*c]vips.c.VipsTargetCustom, buffer: ?*const anyopaque, length: i64) callconv(.c) i64 {
-    if (buffer == null or length <= 0 or target == null) return -1;
-
-    // Get context from target user data
-    const ctx_ptr = vips.c.g_object_get_data(@ptrCast(target), "zig_context");
-    if (ctx_ptr == null) return -1;
-
-    const ctx = @as(*TargetContext, @ptrCast(@alignCast(ctx_ptr)));
+// Signal callback for VipsTargetCustom "write" — receives user_data as last param.
+fn targetWriteCallback(_: [*c]vips.c.VipsTargetCustom, buffer: ?*const anyopaque, length: i64, user_data: ?*anyopaque) callconv(.c) i64 {
+    if (buffer == null or length <= 0) return -1;
+    const ctx = @as(*TargetContext, @ptrCast(@alignCast(user_data orelse return -1)));
     const data = @as([*]const u8, @ptrCast(buffer.?))[0..@intCast(length)];
 
     ctx.writer.writeAll(data) catch return -1;
@@ -66,30 +54,34 @@ pub const CustomSource = struct {
             return vips.VipsError.LoadFailed;
         }
 
-        var result = CustomSource{
+        return CustomSource{
             .source = source.?,
             .context = SourceContext{
                 .reader = reader,
                 .allocator = allocator,
-                .buffer = std.ArrayList(u8).init(allocator),
+                .buffer = std.ArrayList(u8).initCapacity(allocator, 0) catch return vips.VipsError.OutOfMemory,
                 .position = 0,
                 .eof_reached = false,
             },
         };
+    }
 
-        // Store context in the GObject user data
-        vips.c.g_object_set_data(@ptrCast(source), "zig_context", &result.context);
-
-        // Set the read callback: instance pointer is GTypeInstance* (same address in GObject)
-        const inst = @as(*vips.c.GTypeInstance, @ptrCast(source.?));
-        const source_class = @as([*c]vips.c.VipsSourceCustomClass, @ptrCast(inst.g_class));
-        source_class.*.read = sourceReadCallback;
-
-        return result;
+    /// Connect the GObject "read" signal. MUST be called after the struct is
+    /// stored in its final location (local var on the caller's stack) so that
+    /// `&self.context` remains valid for the lifetime of the signal.
+    pub fn connectSignal(self: *CustomSource) void {
+        _ = vips.c.g_signal_connect_data(
+            @as(vips.c.gpointer, @ptrCast(self.source)),
+            "read",
+            @as(vips.c.GCallback, @ptrCast(&sourceReadCallback)),
+            @as(vips.c.gpointer, @ptrCast(&self.context)),
+            null,
+            0,
+        );
     }
 
     pub fn deinit(self: *CustomSource) void {
-        self.context.buffer.deinit();
+        self.context.buffer.deinit(self.context.allocator);
         vips.c.g_object_unref(self.source);
     }
 
@@ -109,23 +101,27 @@ pub const CustomTarget = struct {
             return vips.VipsError.SaveFailed;
         }
 
-        var result = CustomTarget{
+        return CustomTarget{
             .target = target.?,
             .context = TargetContext{
                 .writer = writer,
                 .allocator = allocator,
             },
         };
+    }
 
-        // Store context in the GObject user data
-        vips.c.g_object_set_data(@ptrCast(target), "zig_context", &result.context);
-
-        // Set the write callback: instance pointer is GTypeInstance* (same address in GObject)
-        const inst = @as(*vips.c.GTypeInstance, @ptrCast(target.?));
-        const target_class = @as([*c]vips.c.VipsTargetCustomClass, @ptrCast(inst.g_class));
-        target_class.*.write = targetWriteCallback;
-
-        return result;
+    /// Connect the GObject "write" signal. MUST be called after the struct is
+    /// stored in its final location (local var on the caller's stack) so that
+    /// `&self.context` remains valid for the lifetime of the signal.
+    pub fn connectSignal(self: *CustomTarget) void {
+        _ = vips.c.g_signal_connect_data(
+            @as(vips.c.gpointer, @ptrCast(self.target)),
+            "write",
+            @as(vips.c.GCallback, @ptrCast(&targetWriteCallback)),
+            @as(vips.c.gpointer, @ptrCast(&self.context)),
+            null,
+            0,
+        );
     }
 
     pub fn deinit(self: *CustomTarget) void {
@@ -502,24 +498,141 @@ pub fn jxlSaveToFile(allocator: std.mem.Allocator, image: *const vips.VipsImage,
 
 // Complete pipeline function following Go pattern exactly with real I/O
 pub fn cropImagePipeline(allocator: std.mem.Allocator, reader: *std.Io.Reader, writer: *std.Io.Writer, x: i32, y: i32, width: u32, height: u32, format: []const u8) vips.VipsError!void {
-    // 1. source from reader (REAL READER!)
+    const opts = defaultOptsForStreamableFormat(blk: {
+        const fmt = format_options.SaveFormat.fromExtension(format) orelse break :blk .png;
+        break :blk toStreamable(fmt) orelse .png;
+    });
+    try cropImagePipelineWithOpts(allocator, reader, writer, x, y, width, height, opts);
+}
+
+pub fn cropImagePipelineWithOpts(allocator: std.mem.Allocator, reader: *std.Io.Reader, writer: *std.Io.Writer, x: i32, y: i32, width: u32, height: u32, opts: SaveOptsUnion) vips.VipsError!void {
     var source = newSourceFromReader(reader, allocator) catch return vips.VipsError.LoadFailed;
+    source.connectSignal();
     defer source.deinit();
 
-    // 2. image from source
     var image = imageFromSource(source.getVipsSource()) catch return vips.VipsError.LoadFailed;
     defer image.deinit();
 
-    // 3. vips.crop(image)
     var cropped_image = vips.cropImage(&image, x, y, width, height) catch return vips.VipsError.ProcessingFailed;
     defer cropped_image.deinit();
 
-    // 4. target to writer (REAL WRITER!)
     var target = newTargetToWriter(writer, allocator) catch return vips.VipsError.SaveFailed;
+    target.connectSignal();
     defer target.deinit();
 
-    // 5. save to target (writes directly to writer via callback!)
-    imageWriteToTarget(&cropped_image, target.getVipsTarget(), format) catch return vips.VipsError.SaveFailed;
+    const t = target.getVipsTarget();
+    switch (opts) {
+        .jpeg => |o| try jpegSaveToTarget(&cropped_image, t, o),
+        .png => |o| try pngSaveToTarget(&cropped_image, t, o),
+        .webp => |o| try webpSaveToTarget(&cropped_image, t, o),
+        .tiff => |o| try tiffSaveToTarget(&cropped_image, t, o),
+        .gif => |o| try gifSaveToTarget(&cropped_image, t, o),
+    }
+}
+
+fn defaultOptsForStreamableFormat(f: StreamableFormat) SaveOptsUnion {
+    return switch (f) {
+        .jpeg => .{ .jpeg = .{} },
+        .png => .{ .png = .{} },
+        .webp => .{ .webp = .{} },
+        .tiff => .{ .tiff = .{} },
+        .gif => .{ .gif = .{} },
+    };
+}
+
+/// Stream: reader -> load -> resize by scale factors -> writer. scale_x/scale_y e.g. 0.5.
+pub fn scaleImagePipeline(allocator: std.mem.Allocator, reader: *std.Io.Reader, writer: *std.Io.Writer, scale_x: f64, scale_y: f64, format: []const u8) vips.VipsError!void {
+    const opts = defaultOptsForStreamableFormat(blk: {
+        const fmt = format_options.SaveFormat.fromExtension(format) orelse break :blk .png;
+        break :blk toStreamable(fmt) orelse .png;
+    });
+    try scaleImagePipelineWithOpts(allocator, reader, writer, scale_x, scale_y, opts);
+}
+
+pub fn scaleImagePipelineWithOpts(allocator: std.mem.Allocator, reader: *std.Io.Reader, writer: *std.Io.Writer, scale_x: f64, scale_y: f64, opts: SaveOptsUnion) vips.VipsError!void {
+    var source = newSourceFromReader(reader, allocator) catch return vips.VipsError.LoadFailed;
+    source.connectSignal();
+    defer source.deinit();
+
+    var image = imageFromSource(source.getVipsSource()) catch return vips.VipsError.LoadFailed;
+    defer image.deinit();
+
+    var resized = vips.resizeImage(&image, scale_x, scale_y) catch return vips.VipsError.ProcessingFailed;
+    defer resized.deinit();
+
+    var target = newTargetToWriter(writer, allocator) catch return vips.VipsError.SaveFailed;
+    target.connectSignal();
+    defer target.deinit();
+
+    const t = target.getVipsTarget();
+    switch (opts) {
+        .jpeg => |o| try jpegSaveToTarget(&resized, t, o),
+        .png => |o| try pngSaveToTarget(&resized, t, o),
+        .webp => |o| try webpSaveToTarget(&resized, t, o),
+        .tiff => |o| try tiffSaveToTarget(&resized, t, o),
+        .gif => |o| try gifSaveToTarget(&resized, t, o),
+    }
+}
+
+/// Stream: reader -> load -> write to target format (no geometry change).
+pub fn convertPipeline(allocator: std.mem.Allocator, reader: *std.Io.Reader, writer: *std.Io.Writer, format: []const u8) vips.VipsError!void {
+    var source = newSourceFromReader(reader, allocator) catch return vips.VipsError.LoadFailed;
+    source.connectSignal();
+    defer source.deinit();
+
+    var image = imageFromSource(source.getVipsSource()) catch return vips.VipsError.LoadFailed;
+    defer image.deinit();
+
+    var target = newTargetToWriter(writer, allocator) catch return vips.VipsError.SaveFailed;
+    target.connectSignal();
+    defer target.deinit();
+
+    imageWriteToTarget(&image, target.getVipsTarget(), format) catch return vips.VipsError.SaveFailed;
+}
+
+/// Formats we can stream to (have *SaveToTarget). Others (heif, jp2k, jxl) only have *SaveToFile.
+pub const StreamableFormat = enum { jpeg, png, webp, tiff, gif };
+
+pub const SaveOptsUnion = union(StreamableFormat) {
+    jpeg: JpegSaveOpts,
+    png: PngSaveOpts,
+    webp: WebpSaveOpts,
+    tiff: TiffSaveOpts,
+    gif: GifSaveOpts,
+};
+
+pub fn toStreamable(f: format_options.SaveFormat) ?StreamableFormat {
+    return switch (f) {
+        .jpeg => .jpeg,
+        .png => .png,
+        .webp => .webp,
+        .tiff => .tiff,
+        .gif => .gif,
+        .heif, .jp2k, .jxl => null,
+    };
+}
+
+/// Stream: reader -> load -> save to target with format-specific opts (streaming).
+pub fn convertPipelineWithOpts(allocator: std.mem.Allocator, reader: *std.Io.Reader, writer: *std.Io.Writer, opts: SaveOptsUnion) vips.VipsError!void {
+    var source = newSourceFromReader(reader, allocator) catch return vips.VipsError.LoadFailed;
+    source.connectSignal();
+    defer source.deinit();
+
+    var image = imageFromSource(source.getVipsSource()) catch return vips.VipsError.LoadFailed;
+    defer image.deinit();
+
+    var target = newTargetToWriter(writer, allocator) catch return vips.VipsError.SaveFailed;
+    target.connectSignal();
+    defer target.deinit();
+
+    const t = target.getVipsTarget();
+    switch (opts) {
+        .jpeg => |o| try jpegSaveToTarget(&image, t, o),
+        .png => |o| try pngSaveToTarget(&image, t, o),
+        .webp => |o| try webpSaveToTarget(&image, t, o),
+        .tiff => |o| try tiffSaveToTarget(&image, t, o),
+        .gif => |o| try gifSaveToTarget(&image, t, o),
+    }
 }
 
 // Simple compatibility functions for existing code
@@ -572,6 +685,7 @@ pub fn saveImageToMemory(allocator: std.mem.Allocator, image: *const vips.VipsIm
 /// Stream image directly to writer via VipsTarget (no full buffer in memory).
 pub fn saveImageToWriter(allocator: std.mem.Allocator, image: *const vips.VipsImage, writer: *std.Io.Writer, format: []const u8) vips.VipsError!void {
     var target = newTargetToWriter(writer, allocator) catch return vips.VipsError.SaveFailed;
+    target.connectSignal();
     defer target.deinit();
     imageWriteToTarget(image, target.getVipsTarget(), format) catch return vips.VipsError.SaveFailed;
 }
@@ -631,4 +745,201 @@ test "JxlSaveOpts defaults" {
     try std.testing.expect(opts.q == 80);
     try std.testing.expect(opts.effort == 7);
     try std.testing.expect(opts.lossless == false);
+}
+
+// --- Integration tests (require libvips; catch dangling-pointer regressions) ---
+
+// vips_shutdown() is destructive and cannot be followed by vips_init() again.
+// Use a process-wide flag so all tests share a single init (no shutdown in tests).
+var vips_test_initialized = false;
+
+fn ensureVipsInit() bool {
+    if (vips_test_initialized) return true;
+    if (vips.c.vips_init("test") != 0) return false;
+    vips_test_initialized = true;
+    return true;
+}
+
+fn createTestImage(w: c_int, h: c_int) ?vips.VipsImage {
+    var black: ?*vips.c.VipsImage = null;
+    if (vips.c.vips_black(&black, w, h, "bands", @as(c_int, 3), @as(?*anyopaque, null)) != 0) return null;
+    // Cast to sRGB so JPEG/PNG save works without colorspace errors
+    var output: ?*vips.c.VipsImage = null;
+    if (vips.c.vips_colourspace(black, &output, vips.c.VIPS_INTERPRETATION_sRGB, @as(?*anyopaque, null)) != 0) {
+        vips.c.g_object_unref(black);
+        return null;
+    }
+    vips.c.g_object_unref(black);
+    return vips.VipsImage{ .handle = output.? };
+}
+
+test "CustomTarget: save image through signal callback" {
+    if (!ensureVipsInit()) return error.SkipZigTest;
+
+    var img = createTestImage(10, 10) orelse return error.SkipZigTest;
+    defer img.deinit();
+
+    var output_buf: [256 * 1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&output_buf);
+
+    var target = CustomTarget.init(&writer, std.testing.allocator) catch return error.SkipZigTest;
+    target.connectSignal();
+    defer target.deinit();
+
+    jpegSaveToTarget(&img, target.getVipsTarget(), .{}) catch |e| {
+        std.debug.print("[test] jpegSaveToTarget failed: {s}\n", .{@errorName(e)});
+        return error.SkipZigTest;
+    };
+
+    const written = writer.buffered();
+    try std.testing.expect(written.len > 0);
+    // JPEG magic: FF D8 FF
+    try std.testing.expectEqual(@as(u8, 0xFF), written[0]);
+    try std.testing.expectEqual(@as(u8, 0xD8), written[1]);
+}
+
+// Helper: save image to a fixed buffer via CustomTarget (avoids saveImageToMemory which
+// uses vips_image_write_to_target and may fail for synthetic images).
+fn saveTestImageToBuffer(img: *const vips.VipsImage, buf: []u8, opts: SaveOptsUnion) ?[]const u8 {
+    var writer = std.Io.Writer.fixed(buf);
+    var target = CustomTarget.init(&writer, std.testing.allocator) catch return null;
+    target.connectSignal();
+    defer target.deinit();
+    const t = target.getVipsTarget();
+    switch (opts) {
+        .jpeg => |o| jpegSaveToTarget(img, t, o) catch return null,
+        .png => |o| pngSaveToTarget(img, t, o) catch return null,
+        .webp => |o| webpSaveToTarget(img, t, o) catch return null,
+        .tiff => |o| tiffSaveToTarget(img, t, o) catch return null,
+        .gif => |o| gifSaveToTarget(img, t, o) catch return null,
+    }
+    const written = writer.buffered();
+    if (written.len == 0) return null;
+    return written;
+}
+
+test "CustomSource: load image through signal callback" {
+    if (!ensureVipsInit()) return error.SkipZigTest;
+
+    var img = createTestImage(16, 16) orelse return error.SkipZigTest;
+    defer img.deinit();
+
+    // Save to JPEG via CustomTarget (which already works)
+    var jpeg_buf: [256 * 1024]u8 = undefined;
+    const jpeg_data = saveTestImageToBuffer(&img, &jpeg_buf, .{ .jpeg = .{} }) orelse return error.SkipZigTest;
+
+    // Load back through CustomSource + signal callback
+    var reader = std.Io.Reader.fixed(jpeg_data);
+
+    var source = CustomSource.init(&reader, std.testing.allocator) catch return error.SkipZigTest;
+    source.connectSignal();
+    defer source.deinit();
+
+    var loaded = imageFromSource(source.getVipsSource()) catch return error.SkipZigTest;
+    defer loaded.deinit();
+
+    try std.testing.expectEqual(@as(u32, 16), loaded.getWidth());
+    try std.testing.expectEqual(@as(u32, 16), loaded.getHeight());
+}
+
+test "convertPipelineWithOpts: full roundtrip source -> target" {
+    if (!ensureVipsInit()) return error.SkipZigTest;
+
+    var img = createTestImage(20, 20) orelse return error.SkipZigTest;
+    defer img.deinit();
+
+    // Create PNG input via CustomTarget
+    var png_buf: [256 * 1024]u8 = undefined;
+    const png_data = saveTestImageToBuffer(&img, &png_buf, .{ .png = .{} }) orelse return error.SkipZigTest;
+
+    var reader = std.Io.Reader.fixed(png_data);
+    var output_buf: [256 * 1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&output_buf);
+
+    // PNG -> JPEG conversion through full streaming pipeline
+    convertPipelineWithOpts(
+        std.testing.allocator,
+        &reader,
+        &writer,
+        .{ .jpeg = .{ .q = 80 } },
+    ) catch |e| {
+        std.debug.print("[test] convertPipelineWithOpts failed: {s}\n", .{@errorName(e)});
+        return e;
+    };
+
+    const output = writer.buffered();
+    try std.testing.expect(output.len > 0);
+    // JPEG magic
+    try std.testing.expectEqual(@as(u8, 0xFF), output[0]);
+    try std.testing.expectEqual(@as(u8, 0xD8), output[1]);
+}
+
+test "cropImagePipelineWithOpts: crop and verify dimensions" {
+    if (!ensureVipsInit()) return error.SkipZigTest;
+
+    var img = createTestImage(64, 64) orelse return error.SkipZigTest;
+    defer img.deinit();
+
+    // Create PNG input via CustomTarget
+    var png_buf: [256 * 1024]u8 = undefined;
+    const png_data = saveTestImageToBuffer(&img, &png_buf, .{ .png = .{} }) orelse return error.SkipZigTest;
+
+    var reader = std.Io.Reader.fixed(png_data);
+    var output_buf: [256 * 1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&output_buf);
+
+    cropImagePipelineWithOpts(
+        std.testing.allocator,
+        &reader,
+        &writer,
+        0, 0, 32, 32,
+        .{ .png = .{} },
+    ) catch |e| {
+        std.debug.print("[test] cropImagePipelineWithOpts failed: {s}\n", .{@errorName(e)});
+        return e;
+    };
+
+    const output = writer.buffered();
+    try std.testing.expect(output.len > 0);
+
+    // Load the cropped output and verify dimensions
+    var cropped = loadImageFromMemory(output) catch return error.SkipZigTest;
+    defer cropped.deinit();
+    try std.testing.expectEqual(@as(u32, 32), cropped.getWidth());
+    try std.testing.expectEqual(@as(u32, 32), cropped.getHeight());
+}
+
+test "scaleImagePipelineWithOpts: scale and verify dimensions" {
+    if (!ensureVipsInit()) return error.SkipZigTest;
+
+    var img = createTestImage(64, 64) orelse return error.SkipZigTest;
+    defer img.deinit();
+
+    // Create PNG input via CustomTarget
+    var png_buf: [256 * 1024]u8 = undefined;
+    const png_data = saveTestImageToBuffer(&img, &png_buf, .{ .png = .{} }) orelse return error.SkipZigTest;
+
+    var reader = std.Io.Reader.fixed(png_data);
+    var output_buf: [256 * 1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&output_buf);
+
+    scaleImagePipelineWithOpts(
+        std.testing.allocator,
+        &reader,
+        &writer,
+        0.5, 0.5,
+        .{ .png = .{} },
+    ) catch |e| {
+        std.debug.print("[test] scaleImagePipelineWithOpts failed: {s}\n", .{@errorName(e)});
+        return e;
+    };
+
+    const output = writer.buffered();
+    try std.testing.expect(output.len > 0);
+
+    // Load the scaled output and verify dimensions
+    var scaled = loadImageFromMemory(output) catch return error.SkipZigTest;
+    defer scaled.deinit();
+    try std.testing.expectEqual(@as(u32, 32), scaled.getWidth());
+    try std.testing.expectEqual(@as(u32, 32), scaled.getHeight());
 }

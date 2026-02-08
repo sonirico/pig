@@ -243,6 +243,7 @@ pub fn saveImageToWriter(allocator: std.mem.Allocator, image: *const VipsImage, 
 /// Save as JPEG to writer with options (streaming).
 pub fn saveImageToWriterJpeg(allocator: std.mem.Allocator, image: *const VipsImage, writer: *std.Io.Writer, opts: vips_custom.JpegSaveOpts) VipsError!void {
     var target = vips_custom.newTargetToWriter(writer, allocator) catch return VipsError.SaveFailed;
+    target.connectSignal();
     defer target.deinit();
     try vips_custom.jpegSaveToTarget(image, target.getVipsTarget(), opts);
 }
@@ -250,6 +251,7 @@ pub fn saveImageToWriterJpeg(allocator: std.mem.Allocator, image: *const VipsIma
 /// Save as PNG to writer with options (streaming).
 pub fn saveImageToWriterPng(allocator: std.mem.Allocator, image: *const VipsImage, writer: *std.Io.Writer, opts: vips_custom.PngSaveOpts) VipsError!void {
     var target = vips_custom.newTargetToWriter(writer, allocator) catch return VipsError.SaveFailed;
+    target.connectSignal();
     defer target.deinit();
     try vips_custom.pngSaveToTarget(image, target.getVipsTarget(), opts);
 }
