@@ -1,7 +1,7 @@
 # =============================================================================
-# pig – 100% static CLI binary. All deps built from source into /opt/static.
-# Use: make docker-build && make docker-extract  (binary in ./out/pig)
-# Optimized: .dockerignore + COPY order + BuildKit cache so only changed layers rebuild.
+# pig – 100% static CLI binary.
+# Strategy: Alpine -static for truly dep-free leaf libs (zlib, expat, pcre2,
+# jpeg, png). Everything else from source to avoid transitive dep mismatches.
 # =============================================================================
 # syntax=docker/dockerfile:1
 FROM alpine:3.22 AS base
@@ -12,26 +12,44 @@ RUN apk add --no-cache \
     curl \
     gettext-dev \
     git \
+    linux-headers \
     meson \
     ninja \
     pkgconfig \
     python3 \
     tar \
     xz \
-    bzip2
+    bzip2 \
+    # Dep-free leaf libs: -dev (headers) + -static (.a)
+    zlib-dev zlib-static \
+    expat-dev expat-static \
+    pcre2-dev pcre2-static \
+    libjpeg-turbo-dev libjpeg-turbo-static \
+    libpng-dev libpng-static
 
 # =============================================================================
-# Static deps: build all libs into /opt/static (only .a, no .so)
+# Static deps: source-build everything else into /opt/static
 # =============================================================================
 FROM base AS static-deps
 ARG PREFIX=/opt/static
 WORKDIR /tmp
 
+# Seed /opt/static with Alpine's dep-free .a and .pc files
+RUN mkdir -p $PREFIX/lib $PREFIX/lib/pkgconfig && \
+    for lib in z expat pcre2-8 jpeg png16; do \
+        cp -f /usr/lib/lib${lib}.a $PREFIX/lib/ 2>/dev/null || true; \
+    done && \
+    for pc in zlib expat libpcre2-8 libjpeg libpng16 libpng; do \
+        [ -f "/usr/lib/pkgconfig/${pc}.pc" ] && \
+            sed 's|^libdir=.*|libdir=/opt/static/lib|' "/usr/lib/pkgconfig/${pc}.pc" \
+            > "$PREFIX/lib/pkgconfig/${pc}.pc" || true; \
+    done
+
 COPY docker/static-deps-build.sh /tmp/
 RUN chmod +x /tmp/static-deps-build.sh && /tmp/static-deps-build.sh
 
 # =============================================================================
-# libvips static (against /opt/static), no rsvg/poppler/openexr/heif/jxl
+# libvips static
 # =============================================================================
 FROM static-deps AS vips-static
 ARG VIPS_VERSION=8.18.0
@@ -45,6 +63,7 @@ RUN curl -sL "https://github.com/libvips/libvips/releases/download/v${VIPS_VERSI
     cd vips-${VIPS_VERSION} && \
     meson setup build \
         --prefix=$PREFIX \
+        --libdir=lib \
         --buildtype=release \
         -Ddefault_library=static \
         -Ddeprecated=false \
@@ -68,7 +87,7 @@ RUN curl -sL "https://github.com/libvips/libvips/releases/download/v${VIPS_VERSI
         -Djpeg-xl=disabled \
         -Dfftw=enabled \
         -Dorc=enabled \
-        -Dcfitsio=enabled \
+        -Dcfitsio=disabled \
         -Dopenjpeg=enabled \
         -Dopenexr=disabled \
         -Darchive=enabled \
@@ -79,11 +98,11 @@ RUN curl -sL "https://github.com/libvips/libvips/releases/download/v${VIPS_VERSI
         -Dradiance=false \
         -Dfuzzing_engine=none \
     && ninja -C build && ninja -C build install \
-    && find $PREFIX/lib -name "*.so*" -delete 2>/dev/null || true \
+    && (find $PREFIX/lib -name "*.so*" -delete 2>/dev/null || true) \
     && cd / && rm -rf /tmp/vips-*
 
 # =============================================================================
-# Zig build: pig 100% static (PKG_CONFIG_PATH + LIBRARY_PATH = /opt/static)
+# Zig build
 # =============================================================================
 FROM vips-static AS zig-builder
 ARG ZIG_VERSION=0.15.2
@@ -102,20 +121,14 @@ WORKDIR /app
 COPY build.zig build.zig.zon ./
 COPY src/ ./src/
 
-# BuildKit cache: zig global + project cache so unchanged files don't recompile
 RUN --mount=type=cache,target=/root/.cache/zig \
     --mount=type=cache,target=/app/.zig-cache \
     zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic=true
 
 # =============================================================================
-# Artifact: only the binary (docker build --output type=local,dest=./out)
-# =============================================================================
 FROM scratch AS artifact
 COPY --from=zig-builder /app/zig-out/bin/pig /pig
 
-# =============================================================================
-# Production: minimal image, only the static binary
-# =============================================================================
 FROM scratch AS production
 COPY --from=zig-builder /app/zig-out/bin/pig /pig
 ENTRYPOINT ["/pig"]
