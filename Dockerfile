@@ -123,7 +123,7 @@ COPY src/ ./src/
 
 RUN --mount=type=cache,target=/root/.cache/zig \
     --mount=type=cache,target=/app/.zig-cache \
-    zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic=true
+    zig build -Doptimize=ReleaseSmall -Dstrip=true -Dstatic=true
 
 # =============================================================================
 FROM scratch AS artifact

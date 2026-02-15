@@ -61,7 +61,7 @@ jobs:
         run: brew install vips
 
       - name: Build
-        run: zig build -Doptimize=ReleaseFast -Dstrip=true
+        run: zig build -Doptimize=ReleaseSmall -Dstrip=true
 
       - name: Rename and upload artifact
         run: |
