@@ -14,7 +14,7 @@
 Fast image processing CLI tool built with Zig and libvips. Designed for high-performance batch operations and pipeline integration.
 
 <p align="center">
-  <img src="demo.gif" alt="pig print demo" width="720" />
+  <img src="demo.gif" alt="pig print demo" width="640" />
 </p>
 
 ## Installation
