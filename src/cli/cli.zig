@@ -7,6 +7,7 @@ const optimize = @import("cmd/optimize.zig");
 const inspect = @import("cmd/inspect.zig");
 const crop = @import("cmd/crop.zig");
 const scale = @import("cmd/scale.zig");
+const print_cmd = @import("cmd/print.zig");
 
 pub fn build(writer: *Writer, allocator: std.mem.Allocator) !*zli.Command {
     const root = try zli.Command.init(writer, allocator, .{
@@ -19,6 +20,7 @@ pub fn build(writer: *Writer, allocator: std.mem.Allocator) !*zli.Command {
         try inspect.register(writer, allocator),
         try crop.register(writer, allocator),
         try scale.register(writer, allocator),
+        try print_cmd.register(writer, allocator),
         try version.register(writer, allocator),
     });
 

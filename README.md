@@ -13,6 +13,10 @@
 
 Fast image processing CLI tool built with Zig and libvips. Designed for high-performance batch operations and pipeline integration.
 
+<p align="center">
+  <img src="demo.gif" alt="pig print demo" width="720" />
+</p>
+
 ## Installation
 
 ### Quick install
@@ -106,6 +110,12 @@ pig crop -i photo.jpg -o cropped.png 100 100 800 600   # x y width height
 pig scale photo.jpg 1920 1080
 ```
 
+**print** – Display image in the terminal using Unicode half-block characters
+```bash
+pig print photo.jpg              # Renders in any true-color terminal
+pig print --kitty photo.jpg      # Kitty graphics protocol (Kitty/WezTerm)
+```
+
 ### Supported output formats (optimize)
 
 Format is inferred from the `-o` path extension. Options (quality, strip, palette, etc.) are format-specific; see `pig optimize --help`.
@@ -139,12 +149,13 @@ pig optimize input.tiff -o output.jpg -q 90 --strip
 ## Development Status
 
 ### Implemented
-- [x] CLI with zli (inspect, optimize, crop, scale, version)
+- [x] CLI with zli (inspect, optimize, crop, scale, print, version)
 - [x] Image inspection with full metadata and JSON
 - [x] libvips integration; format detection; pipeline (stdin/stdout)
 - [x] **optimize** with format-specific options: JPEG, PNG, WebP, TIFF, GIF, HEIF/AVIF, JP2K, JXL (see table above)
 - [x] **crop** with file or stdout output
 - [x] **scale** (resize)
+- [x] **print** – terminal image preview (Unicode half-blocks; optional Kitty protocol via `--kitty`)
 - [x] Snapshot-based integration tests (Zig runner, no bash); `zig build integration-test`; `-Dupdate=true` to refresh snapshots
 - [x] Format options schema in `src/lib/format_options.zig` (single source of truth for CLI/API/frontend)
 

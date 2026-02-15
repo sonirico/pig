@@ -36,10 +36,16 @@ pub fn build(b: *std.Build) void {
     pig_lib.addCMacro("_DEFAULT_SOURCE", "1");
     pig_lib.addCMacro("_POSIX_C_SOURCE", "200809L");
     pig_lib.addCMacro("_FILE_OFFSET_BITS", "64");
+    if (static) {
+        pig_lib.addIncludePath(.{ .cwd_relative = "/opt/static/include" });
+        pig_lib.addIncludePath(.{ .cwd_relative = "/opt/static/include/glib-2.0" });
+        pig_lib.addIncludePath(.{ .cwd_relative = "/opt/static/lib/glib-2.0/include" });
+    }
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/local/include" });
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/include" });
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/include/vips" });
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/include/glib-2.0" });
+    pig_lib.addIncludePath(.{ .cwd_relative = "/usr/lib/glib-2.0/include" }); // Alpine
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/lib64/glib-2.0/include" });
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/glib-2.0/include" });
 
@@ -73,17 +79,24 @@ pub fn build(b: *std.Build) void {
         exe.linkage = .static;
         addPathIfExists(exe, "/opt/static/include", true);
         addPathIfExists(exe, "/opt/static/lib", false);
+        // In static mode, only use /opt/static — system lib paths contain .so files
+        // that cause "using shared libraries requires dynamic linking" errors.
+        addPathIfExists(exe, "/opt/static/include/glib-2.0", true);
+        addPathIfExists(exe, "/opt/static/lib/glib-2.0/include", true);
+    } else {
+        addPathIfExists(exe, "/usr/local/lib", false);
+        addPathIfExists(exe, "/usr/lib/x86_64-linux-gnu", false);
+        addPathIfExists(exe, "/usr/lib", false);
     }
 
-    // Add include and library paths conditionally
+    // Include paths are always safe (headers only, no .so)
     addPathIfExists(exe, "/usr/local/include", true);
-    addPathIfExists(exe, "/usr/local/lib", false);
     addPathIfExists(exe, "/usr/include", true);
     addPathIfExists(exe, "/usr/include/vips", true);
     addPathIfExists(exe, "/usr/include/glib-2.0", true);
+    addPathIfExists(exe, "/usr/lib/glib-2.0/include", true); // Alpine
+    addPathIfExists(exe, "/usr/lib64/glib-2.0/include", true);
     addPathIfExists(exe, "/usr/lib/x86_64-linux-gnu/glib-2.0/include", true);
-    addPathIfExists(exe, "/usr/lib/x86_64-linux-gnu", false);
-    addPathIfExists(exe, "/usr/lib", false);
 
     b.installArtifact(exe);
 
