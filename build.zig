@@ -11,6 +11,13 @@ fn addPathIfExists(exe: *std.Build.Step.Compile, path: []const u8, is_include: b
     }
 }
 
+fn addModuleIncludeIfExists(mod: *std.Build.Module, path: []const u8) void {
+    const stat = std.fs.cwd().statFile(path) catch return;
+    if (stat.kind == .directory) {
+        mod.addIncludePath(.{ .cwd_relative = path });
+    }
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -48,6 +55,12 @@ pub fn build(b: *std.Build) void {
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/lib/glib-2.0/include" }); // Alpine
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/lib64/glib-2.0/include" });
     pig_lib.addIncludePath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/glib-2.0/include" });
+    // macOS Homebrew (Apple Silicon: /opt/homebrew, Intel: /usr/local)
+    addModuleIncludeIfExists(pig_lib, "/opt/homebrew/include");
+    addModuleIncludeIfExists(pig_lib, "/opt/homebrew/include/glib-2.0");
+    addModuleIncludeIfExists(pig_lib, "/opt/homebrew/lib/glib-2.0/include");
+    addModuleIncludeIfExists(pig_lib, "/usr/local/include/glib-2.0");
+    addModuleIncludeIfExists(pig_lib, "/usr/local/lib/glib-2.0/include");
 
     // --- CLI executable (consumes pig lib) ---
     const exe = b.addExecutable(.{
@@ -84,13 +97,19 @@ pub fn build(b: *std.Build) void {
         addPathIfExists(exe, "/opt/static/include/glib-2.0", true);
         addPathIfExists(exe, "/opt/static/lib/glib-2.0/include", true);
     } else {
+        addPathIfExists(exe, "/opt/homebrew/lib", false); // macOS Apple Silicon
         addPathIfExists(exe, "/usr/local/lib", false);
         addPathIfExists(exe, "/usr/lib/x86_64-linux-gnu", false);
         addPathIfExists(exe, "/usr/lib", false);
     }
 
     // Include paths are always safe (headers only, no .so)
+    addPathIfExists(exe, "/opt/homebrew/include", true); // macOS Apple Silicon
+    addPathIfExists(exe, "/opt/homebrew/include/glib-2.0", true);
+    addPathIfExists(exe, "/opt/homebrew/lib/glib-2.0/include", true);
     addPathIfExists(exe, "/usr/local/include", true);
+    addPathIfExists(exe, "/usr/local/include/glib-2.0", true); // macOS Intel
+    addPathIfExists(exe, "/usr/local/lib/glib-2.0/include", true);
     addPathIfExists(exe, "/usr/include", true);
     addPathIfExists(exe, "/usr/include/vips", true);
     addPathIfExists(exe, "/usr/include/glib-2.0", true);
@@ -129,7 +148,13 @@ pub fn build(b: *std.Build) void {
     unit_tests.linkSystemLibrary("gio-2.0");
     unit_tests.linkSystemLibrary("gmodule-2.0");
     unit_tests.linkLibC();
+    addPathIfExists(unit_tests, "/opt/homebrew/lib", false); // macOS Apple Silicon
+    addPathIfExists(unit_tests, "/opt/homebrew/include", true);
+    addPathIfExists(unit_tests, "/opt/homebrew/include/glib-2.0", true);
+    addPathIfExists(unit_tests, "/opt/homebrew/lib/glib-2.0/include", true);
     addPathIfExists(unit_tests, "/usr/local/include", true);
+    addPathIfExists(unit_tests, "/usr/local/include/glib-2.0", true);
+    addPathIfExists(unit_tests, "/usr/local/lib/glib-2.0/include", true);
     addPathIfExists(unit_tests, "/usr/include", true);
     addPathIfExists(unit_tests, "/usr/include/vips", true);
     addPathIfExists(unit_tests, "/usr/include/glib-2.0", true);
@@ -158,7 +183,13 @@ pub fn build(b: *std.Build) void {
     lib_tests.linkSystemLibrary("gio-2.0");
     lib_tests.linkSystemLibrary("gmodule-2.0");
     lib_tests.linkLibC();
+    addPathIfExists(lib_tests, "/opt/homebrew/lib", false); // macOS Apple Silicon
+    addPathIfExists(lib_tests, "/opt/homebrew/include", true);
+    addPathIfExists(lib_tests, "/opt/homebrew/include/glib-2.0", true);
+    addPathIfExists(lib_tests, "/opt/homebrew/lib/glib-2.0/include", true);
     addPathIfExists(lib_tests, "/usr/local/include", true);
+    addPathIfExists(lib_tests, "/usr/local/include/glib-2.0", true);
+    addPathIfExists(lib_tests, "/usr/local/lib/glib-2.0/include", true);
     addPathIfExists(lib_tests, "/usr/include", true);
     addPathIfExists(lib_tests, "/usr/include/vips", true);
     addPathIfExists(lib_tests, "/usr/include/glib-2.0", true);
