@@ -52,7 +52,7 @@ RUN chmod +x /tmp/static-deps-build.sh && /tmp/static-deps-build.sh
 # libvips static
 # =============================================================================
 FROM static-deps AS vips-static
-ARG VIPS_VERSION=8.18.0
+ARG VIPS_VERSION=8.18.2
 ARG PREFIX=/opt/static
 ENV PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig
 ENV PATH=$PREFIX/bin:$PATH
